@@ -1,6 +1,6 @@
 {
   "name": "LinguaFlow",
   "description": "A minimalist AI-powered translation tool with history and clipboard features.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": []
 }

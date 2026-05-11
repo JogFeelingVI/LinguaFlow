@@ -8,7 +8,12 @@ import {
   ArrowRightLeft, 
   Loader2,
   Trash,
-  Clock
+  Volume2,
+  Mic,
+  MicOff,
+  StopCircle,
+  Clock,
+  FileDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { translateText, languages, TranslationResult } from './services/gemini';
@@ -22,8 +27,11 @@ export default function App() {
   const [history, setHistory] = useState<TranslationResult[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(true);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Load history from localStorage
   useEffect(() => {
@@ -35,12 +43,83 @@ export default function App() {
         console.error('Failed to parse history', e);
       }
     }
+
+    // Initialize Speech Recognition
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setInputText(prev => prev + (prev ? ' ' : '') + transcript);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        if (event.error === 'not-allowed') {
+          alert('Microphone access was denied. If you are in AI Studio, you may need to open the app in a new tab or check your browser permissions.');
+        }
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
   }, []);
 
   // Save history to localStorage
   useEffect(() => {
     localStorage.setItem('translation_history', JSON.stringify(history));
   }, [history]);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      if (recognitionRef.current) {
+        // Map common codes to BCP-47 for better recognition
+        const langMap: Record<string, string> = {
+          'zh': 'zh-CN',
+          'en': 'en-US',
+          'ja': 'ja-JP',
+          'ko': 'ko-KR',
+          'fr': 'fr-FR',
+          'de': 'de-DE',
+          'es': 'es-ES',
+          'ru': 'ru-RU',
+          'it': 'it-IT',
+          'pt': 'pt-PT'
+        };
+        
+        recognitionRef.current.lang = sourceLang === 'auto' ? 'zh-CN' : (langMap[sourceLang] || sourceLang);
+        recognitionRef.current.start();
+        setIsListening(true);
+      } else {
+        alert('Speech recognition is not supported in this browser.');
+      }
+    }
+  };
+
+  const speakText = (text: string, lang: string) => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const handleTranslate = async () => {
     if (!inputText.trim()) return;
@@ -81,6 +160,30 @@ export default function App() {
     if (confirm('Are you sure you want to clear all history?')) {
       setHistory([]);
     }
+  };
+
+  const exportHistoryToMarkdown = () => {
+    if (history.length === 0) return;
+
+    const mdContent = history.map(item => {
+      const date = new Date(item.timestamp).toLocaleString();
+      const sourceName = languages.find(l => l.code === item.sourceLanguage)?.name || item.sourceLanguage;
+      const targetName = languages.find(l => l.code === item.targetLanguage)?.name || item.targetLanguage;
+      
+      return `### ${date}\n**From (${sourceName})**: ${item.originalText}\n**To (${targetName})**: ${item.translatedText}\n\n---\n`;
+    }).join('\n');
+
+    const fullMd = `# Translation History - LinguaFlow\n\nGenerated on ${new Date().toLocaleString()}\n\n${mdContent}`;
+    
+    const blob = new Blob([fullMd], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `translation_history_${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const swapLanguages = () => {
@@ -161,7 +264,18 @@ export default function App() {
                 />
               </div>
               <div className="flex items-center justify-between pt-4">
-                <span className="text-xs text-muted font-mono">{inputText.length} characters</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-mono">{inputText.length} characters</span>
+                  <button
+                    onClick={toggleListening}
+                    className={`p-2 rounded-xl transition-all ${isListening ? 'bg-red-50 text-red-500 shadow-sm' : 'hover:bg-line text-muted'}`}
+                    title="Voice Input"
+                  >
+                    <div className={isListening ? 'animate-pulse' : ''}>
+                      <Mic size={18} />
+                    </div>
+                  </button>
+                </div>
                 <button
                   onClick={handleTranslate}
                   disabled={isLoading || !inputText.trim()}
@@ -193,7 +307,14 @@ export default function App() {
                 </div>
               </div>
               {translatedText && !isLoading && (
-                <div className="flex items-center justify-end pt-4">
+                <div className="flex items-center justify-end gap-2 pt-4">
+                  <button 
+                    onClick={() => speakText(translatedText, targetLang)}
+                    className={`p-3 rounded-2xl transition-all border border-line flex items-center gap-2 text-sm font-medium ${isSpeaking ? 'bg-accent text-white' : 'bg-surface hover:bg-line'}`}
+                  >
+                    {isSpeaking ? <StopCircle size={18} /> : <Volume2 size={18} />}
+                    {isSpeaking ? 'Stop' : 'Listen'}
+                  </button>
                   <button 
                     onClick={() => copyToClipboard(translatedText, 'main')}
                     className="p-3 bg-surface rounded-2xl hover:bg-line transition-all border border-line flex items-center gap-2 text-sm font-medium"
@@ -224,6 +345,14 @@ export default function App() {
               </div>
               <div className="flex items-center gap-1">
                 <button 
+                  onClick={exportHistoryToMarkdown}
+                  title="Export to Markdown"
+                  disabled={history.length === 0}
+                  className="p-2 hover:bg-line rounded-lg transition-colors text-muted hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <FileDown size={16} />
+                </button>
+                <button 
                   onClick={clearHistory}
                   title="Clear All"
                   className="p-2 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-muted grayscale hover:grayscale-0"
@@ -250,13 +379,26 @@ export default function App() {
                   <motion.div 
                     layout
                     key={item.timestamp}
-                    className="group bg-bg p-4 rounded-2xl border border-line hover:border-accent/30 transition-all relative"
+                    onClick={() => {
+                      setInputText(item.originalText);
+                      setTranslatedText(item.translatedText);
+                      setSourceLang(item.sourceLanguage);
+                      setTargetLang(item.targetLanguage);
+                    }}
+                    className="group bg-bg p-4 rounded-2xl border border-line hover:border-accent/30 transition-all relative cursor-pointer active:scale-[0.98]"
                   >
                     <div className="flex items-center justify-between mb-2">
                        <span className="text-[10px] font-bold text-muted/60 uppercase tracking-tighter">
                         {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => speakText(item.translatedText, item.targetLanguage)}
+                          className="p-1.5 hover:bg-surface rounded-lg text-muted hover:text-accent"
+                          title="Speak"
+                        >
+                          <Volume2 size={14} />
+                        </button>
                         <button 
                           onClick={() => copyToClipboard(item.translatedText, item.timestamp.toString())}
                           className="p-1.5 hover:bg-surface rounded-lg text-muted hover:text-accent"
