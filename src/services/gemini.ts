@@ -52,3 +52,27 @@ Source Language: ${sourceLang === 'auto' ? 'detect' : sourceLang}`;
     throw error;
   }
 }
+
+export async function refineText(text: string): Promise<string> {
+  if (!text.trim()) return '';
+
+  const systemInstruction = `You are a text editor. Add missing punctuation, fix capitalization, and improve clarity of the provided text while keeping the exact same meaning. 
+Output ONLY the refined text. 
+If the text is already perfect, output it as is.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: text,
+      config: {
+        systemInstruction,
+        temperature: 0.1,
+      },
+    });
+
+    return response.text?.trim() || text;
+  } catch (error) {
+    console.error("Refine error:", error);
+    return text;
+  }
+}

@@ -13,10 +13,11 @@ import {
   MicOff,
   StopCircle,
   Clock,
-  FileDown
+  FileDown,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { translateText, languages, TranslationResult } from './services/gemini';
+import { translateText, refineText, languages, TranslationResult } from './services/gemini';
 
 export default function App() {
   const [inputText, setInputText] = useState('');
@@ -24,6 +25,7 @@ export default function App() {
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('zh');
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
   const [history, setHistory] = useState<TranslationResult[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(true);
@@ -32,6 +34,19 @@ export default function App() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  const handleRefine = async () => {
+    if (!inputText.trim()) return;
+    setIsRefining(true);
+    try {
+      const refined = await refineText(inputText);
+      setInputText(refined);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRefining(false);
+    }
+  };
 
   // Load history from localStorage
   useEffect(() => {
@@ -52,8 +67,17 @@ export default function App() {
       recognitionRef.current.interimResults = false;
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInputText(prev => prev + (prev ? ' ' : '') + transcript);
+        let transcript = event.results[0][0].transcript;
+        
+        // Basic punctuation: append a space as requested
+        // If it's a relatively long phrase and doesn't end with punctuation, add a period/full-stop
+        const needsPunctuation = transcript.length > 5 && !/[.!?。！？]$/.test(transcript);
+        const punc = needsPunctuation ? ((sourceLang === 'zh' || sourceLang === 'auto') ? '。' : '.') : '';
+        
+        setInputText(prev => {
+          const base = prev.trim();
+          return (base ? base + ' ' : '') + transcript + punc + ' ';
+        });
         setIsListening(false);
       };
 
@@ -274,6 +298,14 @@ export default function App() {
                     <div className={isListening ? 'animate-pulse' : ''}>
                       <Mic size={18} />
                     </div>
+                  </button>
+                  <button
+                    onClick={handleRefine}
+                    disabled={isRefining || !inputText.trim()}
+                    className={`p-2 rounded-xl transition-all ${isRefining ? 'text-accent animate-spin' : 'hover:bg-line text-muted hover:text-accent'}`}
+                    title="Smart Refine (Add punctuation & fix grammar)"
+                  >
+                    <Sparkles size={18} />
                   </button>
                 </div>
                 <button
