@@ -277,14 +277,14 @@ export default function App() {
           {/* Interaction Box */}
           <div className="grid md:grid-cols-2 gap-px bg-line rounded-3xl overflow-hidden shadow-sm border border-line">
             {/* Input */}
-            <div className="bg-surface p-6 flex flex-col min-h-[300px]">
+            <div className="bg-surface p-6 flex flex-col min-h-[300px] focus-within:ring-2 focus-within:ring-accent/10 transition-all z-10">
               <div className="flex-1 flex flex-col">
                 <textarea
                   ref={textareaRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Paste text to translate..."
-                  className="w-full h-full bg-transparent border-none focus:ring-0 resize-none text-lg placeholder:text-muted/40 font-normal leading-relaxed overflow-auto"
+                  className="w-full h-full bg-transparent border-none focus:outline-none focus:ring-0 resize-none text-lg placeholder:text-muted/40 font-normal leading-relaxed overflow-auto"
                 />
               </div>
               <div className="flex items-center justify-between pt-4">
